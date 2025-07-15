@@ -1,6 +1,5 @@
 import { Event } from '../models/event.model.js';
 import { User } from '../models/user.model.js';
-import { Registration } from '../models/registration.model.js';
 import { Op } from 'sequelize';
 
 export const createEvent = async (req, res) => {
@@ -9,7 +8,7 @@ export const createEvent = async (req, res) => {
     if (capacity <= 0 || capacity > 1000)
       return res.status(400).json({ error: 'Capacity must be between 1 and 1000' });
     const event = await Event.create(req.body);
-    res.status(201).json(event);
+    res.status(201).json({eventId: event.id});
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -18,7 +17,13 @@ export const createEvent = async (req, res) => {
 export const getEventDetails = async (req, res) => {
   try {
     const event = await Event.findByPk(req.params.id, {
-      include: User,
+      attributes: ['id', 'title', 'dateTime', 'location', 'capacity'],
+      include: {
+        model: User,
+        as: 'registrations',
+        attributes: ['id', 'name', 'email'],
+        through: { attributes: [] },
+      },
     });
     if (!event) return res.status(404).json({ error: 'Event not found' });
     res.json(event);
@@ -34,11 +39,11 @@ export const registerUser = async (req, res) => {
     const user = await User.findByPk(userId);
     if (!event || !user) return res.status(404).json({ error: 'Event or user not found' });
     if (new Date(event.dateTime) < new Date()) return res.status(400).json({ error: 'Cannot register for past events' });
-    const regCount = await event.countUsers();
+    const regCount = await event.countRegistrations();
     if (regCount >= event.capacity) return res.status(400).json({ error: 'Event is full' });
-    const exists = await event.hasUser(user);
+    const exists = await event.hasRegistration(user);
     if (exists) return res.status(409).json({ error: 'User already registered' });
-    await event.addUser(user);
+    await event.addRegistration(user);
     res.json({ message: 'Registration successful' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -51,9 +56,9 @@ export const cancelRegistration = async (req, res) => {
     const event = await Event.findByPk(req.params.id);
     const user = await User.findByPk(userId);
     if (!event || !user) return res.status(404).json({ error: 'Event or user not found' });
-    const exists = await event.hasUser(user);
+    const exists = await event.hasRegistration(user);
     if (!exists) return res.status(400).json({ error: 'User not registered' });
-    await event.removeUser(user);
+    await event.removeRegistration(user);
     res.json({ message: 'Registration cancelled' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -80,7 +85,7 @@ export const getEventStats = async (req, res) => {
   try {
     const event = await Event.findByPk(req.params.id);
     if (!event) return res.status(404).json({ error: 'Event not found' });
-    const regCount = await event.countUsers();
+    const regCount = await event.countRegistrations();
     const remaining = event.capacity - regCount;
     const percentage = ((regCount / event.capacity) * 100).toFixed(2);
     res.json({ total: regCount, remaining, percentage });

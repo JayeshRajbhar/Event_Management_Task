@@ -4,5 +4,12 @@ import { Event } from './event.model.js';
 
 export const Registration = sequelize.define('Registration', {}, { timestamps: true });
 
-User.belongsToMany(Event, { through: Registration });
-Event.belongsToMany(User, { through: Registration });
+User.belongsToMany(Event, {
+  through: Registration,
+  as: 'events',
+});
+
+Event.belongsToMany(User, {
+  through: Registration,
+  as: 'registrations',
+});
